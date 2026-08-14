@@ -27,15 +27,17 @@ Vendored Ghostty revision and license details are in `THIRD_PARTY_NOTICES.md`.
 ## Rebuilding GhosttyKit
 
 The checked-in `GhosttyKit.xcframework` is built from the Ghostty custom-I/O fork (https://github.com/Yash-Singh1/ghostty/tree/custom-io).
-Set the directory to the cloned repository checked out on the `custom-io` branch to `GHOSTTY_SOURCE_DIR`.
+Clone that repository, check out the revision recorded in `Vendor/libghostty/VERSION`, and set
+`GHOSTTY_SOURCE_DIR` to the checkout.
 
 ```bash
 apps/mobile/modules/t3-terminal/scripts/build-libghostty-ios16.sh
 ```
 
-The script builds Ghostty with Zig 0.15.2, strips the iOS archives, and replaces only the
-`ios-arm64` and `ios-arm64-simulator` slices. Xcode's Metal toolchain must be installed; if `metal`
-fails, run `xcodebuild -downloadComponent MetalToolchain`.
+The script verifies the pinned revision, applies the repository's iOS build patches, and builds
+Ghostty with Zig 0.15.2. The resulting framework supports arm64 iOS devices and both arm64 and
+x86_64 iOS Simulators. Xcode's Metal toolchain must be installed; if `metal` fails, run
+`xcodebuild -downloadComponent MetalToolchain`.
 
 ## Rebuilding libghostty-vt for Android
 

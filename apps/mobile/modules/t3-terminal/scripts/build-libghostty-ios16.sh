@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VENDOR_DIR="${MODULE_DIR}/Vendor/libghostty"
+PATCH_DIR="${SCRIPT_DIR}/libghostty-ios-patches"
 
 GHOSTTY_SOURCE_DIR="${GHOSTTY_SOURCE_DIR:-${HOME}/ghostty}"
 GHOSTTY_ZIG_VERSION="${GHOSTTY_ZIG_VERSION:-0.15.2}"
@@ -63,6 +64,21 @@ require_cmd rsync
 ensure_zig
 
 ghostty_ref="$(git -C "${GHOSTTY_SOURCE_DIR}" rev-parse HEAD)"
+expected_ref="$(tr -d '[:space:]' < "${VENDOR_DIR}/VERSION")"
+[[ "${ghostty_ref}" == "${expected_ref}" ]] || \
+  die "Ghostty source is at ${ghostty_ref}; expected ${expected_ref}"
+
+for patch in "${PATCH_DIR}"/*.patch; do
+  if git -C "${GHOSTTY_SOURCE_DIR}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
+    log "patch already applied: $(basename "${patch}")"
+  elif git -C "${GHOSTTY_SOURCE_DIR}" apply --check "${patch}"; then
+    log "applying patch: $(basename "${patch}")"
+    git -C "${GHOSTTY_SOURCE_DIR}" apply "${patch}"
+  else
+    die "cannot apply patch cleanly: ${patch}"
+  fi
+done
+
 log "using Ghostty source: ${GHOSTTY_SOURCE_DIR} @ ${ghostty_ref}"
 log "using Zig: ${GHOSTTY_ZIG} ($("${GHOSTTY_ZIG}" version))"
 log "building GhosttyKit.xcframework"
@@ -87,20 +103,30 @@ log "building GhosttyKit.xcframework"
 
 xcframework="${GHOSTTY_SOURCE_DIR}/macos/GhosttyKit.xcframework"
 ios_archive="${xcframework}/ios-arm64/libghostty-fat.a"
-sim_archive="${xcframework}/ios-arm64-simulator/libghostty-fat.a"
+sim_archive="${xcframework}/ios-arm64_x86_64-simulator/libghostty-fat.a"
 [[ -f "${ios_archive}" ]] || die "missing built iOS archive: ${ios_archive}"
 [[ -f "${sim_archive}" ]] || die "missing built iOS simulator archive: ${sim_archive}"
+xcrun lipo "${ios_archive}" -verify_arch arm64 || die "iOS archive is missing arm64"
+xcrun lipo "${sim_archive}" -verify_arch arm64 x86_64 || \
+  die "iOS simulator archive must contain arm64 and x86_64"
 
 log "stripping iOS archives"
 xcrun strip -S -x "${ios_archive}"
 xcrun strip -S -x "${sim_archive}"
 
-log "copying iOS archives into ${VENDOR_DIR}/GhosttyKit.xcframework"
-cp "${ios_archive}" "${VENDOR_DIR}/GhosttyKit.xcframework/ios-arm64/libghostty-fat.a"
-cp "${sim_archive}" "${VENDOR_DIR}/GhosttyKit.xcframework/ios-arm64-simulator/libghostty-fat.a"
-rsync -a --delete "${xcframework}/ios-arm64/Headers/" \
-  "${VENDOR_DIR}/GhosttyKit.xcframework/ios-arm64/Headers/"
-rsync -a --delete "${xcframework}/ios-arm64-simulator/Headers/" \
-  "${VENDOR_DIR}/GhosttyKit.xcframework/ios-arm64-simulator/Headers/"
+package_dir="$(mktemp -d "${TMPDIR:-/tmp}/t3code-ghostty-ios.XXXXXX")"
+trap 'rm -rf "${package_dir}"' EXIT
+
+log "packaging iOS XCFramework"
+xcodebuild -create-xcframework \
+  -library "${ios_archive}" \
+  -headers "${xcframework}/ios-arm64/Headers" \
+  -library "${sim_archive}" \
+  -headers "${xcframework}/ios-arm64_x86_64-simulator/Headers" \
+  -output "${package_dir}/GhosttyKit.xcframework"
+
+log "copying iOS XCFramework into ${VENDOR_DIR}"
+rsync -a --delete "${package_dir}/GhosttyKit.xcframework/" \
+  "${VENDOR_DIR}/GhosttyKit.xcframework/"
 
 log "done"
