@@ -266,6 +266,7 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
   const navigation = useNavigation();
+  const composerDocumentId = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const isDarkMode = useColorScheme() === "dark";
   const foregroundColor = useThemeColor("--color-foreground");
   const bodyText = useScaledTextRole("body");
@@ -773,7 +774,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
           <View className={isExpanded ? undefined : "min-w-0 flex-1"}>
             <ComposerEditor
+              key={composerDocumentId}
               ref={inputRef}
+              documentId={composerDocumentId}
               multiline
               value={props.draftMessage}
               skills={selectedProviderStatus?.skills ?? []}

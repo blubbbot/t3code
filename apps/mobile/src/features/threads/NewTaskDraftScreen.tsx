@@ -791,9 +791,12 @@ export function NewTaskDraftScreen(props: {
     !isImportingShare &&
     !flow.submitting &&
     !(flow.workspaceMode === "worktree" && !flow.selectedBranchName);
+  const promptDocumentId = flow.draftKey ?? "new-task";
   const promptEditor = (
     <ComposerEditor
+      key={promptDocumentId}
       ref={promptInputRef}
+      documentId={promptDocumentId}
       // The context-first screen intentionally opens with the keyboard closed.
       // Focusing is a user action, so presenting the form sheet has one motion.
       autoFocus={false}

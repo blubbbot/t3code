@@ -15,6 +15,8 @@ export interface ComposerEditorHandle {
 
 export interface ComposerEditorProps {
   readonly ref?: Ref<ComposerEditorHandle>;
+  /** Stable identity of the draft controlled by this editor. */
+  readonly documentId: string;
   readonly value: string;
   readonly skills?: ReadonlyArray<
     Pick<ServerProviderSkill, "name" | "displayName" | "shortDescription" | "description">

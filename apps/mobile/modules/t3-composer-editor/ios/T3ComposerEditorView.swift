@@ -16,6 +16,7 @@ private struct ComposerSelectionPayload: Decodable {
 }
 
 private struct ComposerControlledDocumentPayload: Decodable {
+  let documentId: String
   let value: String
   let selection: ComposerSelectionPayload?
   let tokensJson: String
@@ -307,6 +308,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   private var shouldAutoFocus = false
   private var didAutoFocus = false
   private var isApplyingControlledValue = false
+  private var controlledDocumentId = ""
   private var nativeEventCount = 0
   private var lastContentSize = CGSize.zero
   private var iconImages: [String: UIImage] = [:]
@@ -383,8 +385,15 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
   }
 
   func setControlledDocumentJson(_ documentJson: String) {
-    guard let document = decode(ComposerControlledDocumentPayload.self, from: documentJson),
-          document.mostRecentEventCount >= nativeEventCount else {
+    guard let document = decode(ComposerControlledDocumentPayload.self, from: documentJson) else {
+      return
+    }
+    let documentChanged = document.documentId != controlledDocumentId
+    if documentChanged {
+      controlledDocumentId = document.documentId
+      nativeEventCount = 0
+    }
+    guard document.mostRecentEventCount >= nativeEventCount else {
       return
     }
     if document.isNativeEcho && textView.serializedText() != document.value {
@@ -397,7 +406,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     }
     value = document.value
     requestedSelection = document.selection
-    applyControlledDocument(force: tokensNeedRebuild)
+    applyControlledDocument(force: documentChanged || tokensNeedRebuild)
     applyRequestedSelection()
     if tokensMatchCurrentValue() {
       tokensNeedRebuild = false
@@ -771,6 +780,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     let selection = sourceSelection()
     nativeEventCount += 1
     onComposerChange([
+      "documentId": controlledDocumentId,
       "value": value,
       "selection": ["start": selection.start, "end": selection.end],
       "eventCount": nativeEventCount,
@@ -787,6 +797,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     let selection = sourceSelection()
     nativeEventCount += 1
     onComposerSelectionChange([
+      "documentId": controlledDocumentId,
       "value": currentValue,
       "selection": ["start": selection.start, "end": selection.end],
       "eventCount": nativeEventCount,

@@ -29,14 +29,17 @@ import type { ComposerEditorProps, ComposerEditorSelection } from "./T3ComposerE
 
 const NATIVE_MODULE_NAME = "T3ComposerEditor";
 const EMPTY_SKILLS: NonNullable<ComposerEditorProps["skills"]> = [];
+let nextComposerOwnerId = 0;
 
 type NativeEditorEvent = NativeSyntheticEvent<{
+  readonly documentId: string;
   readonly value: string;
   readonly selection: ComposerEditorSelection;
   readonly eventCount: number;
 }>;
 
 type NativeSelectionEvent = NativeSyntheticEvent<{
+  readonly documentId: string;
   readonly value: string;
   readonly selection: ComposerEditorSelection;
   readonly eventCount: number;
@@ -87,6 +90,7 @@ function fileIconUri(path: string): string {
 
 export function ComposerEditor({
   ref,
+  documentId,
   skills = EMPTY_SKILLS,
   selection,
   style,
@@ -101,6 +105,15 @@ export function ComposerEditor({
   ...props
 }: ComposerEditorProps) {
   const nativeRef = useRef<NativeComposerEditorRef>(null);
+  const ownerIdRef = useRef<string | null>(null);
+  if (ownerIdRef.current === null) {
+    nextComposerOwnerId += 1;
+    ownerIdRef.current = `composer-${nextComposerOwnerId}`;
+  }
+  // Fabric may retain the native view while React switches from one composer
+  // document to another. Pair the logical draft with this JS mount so the
+  // native revision protocol can reject events from the previous owner.
+  const nativeDocumentId = `${ownerIdRef.current}:${documentId}`;
   const mostRecentEventCountRef = useRef(0);
   const [mostRecentEventCount, setMostRecentEventCount] = useState(0);
   const [, forceNativeEventRender] = useState(0);
@@ -174,6 +187,7 @@ export function ComposerEditor({
   const isNativeEcho =
     controlledEventCount === mostRecentEventCount && acknowledgesLatestNativeEvent;
   const controlledDocumentJson = JSON.stringify({
+    documentId: nativeDocumentId,
     value: props.value,
     selection: isNativeEcho ? null : (selection ?? null),
     tokensJson,
@@ -257,6 +271,7 @@ export function ComposerEditor({
       spellCheck={props.spellCheck ?? true}
       style={style as StyleProp<ViewStyle>}
       onComposerChange={(event) => {
+        if (event.nativeEvent.documentId !== nativeDocumentId) return;
         const acknowledgedEventCount = acceptNativeEvent(
           event.nativeEvent.eventCount,
           event.nativeEvent.value,
@@ -269,6 +284,7 @@ export function ComposerEditor({
         forceNativeEventRender((sequence) => sequence + 1);
       }}
       onComposerSelectionChange={(event) => {
+        if (event.nativeEvent.documentId !== nativeDocumentId) return;
         const acknowledgedEventCount = acceptNativeEvent(
           event.nativeEvent.eventCount,
           event.nativeEvent.value,

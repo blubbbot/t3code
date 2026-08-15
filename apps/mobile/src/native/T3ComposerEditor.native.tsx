@@ -89,6 +89,7 @@ function fileIconUri(path: string): string {
 
 export function ComposerEditor({
   ref,
+  documentId: _documentId,
   skills = EMPTY_SKILLS,
   selection,
   style,

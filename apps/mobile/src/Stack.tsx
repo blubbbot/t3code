@@ -81,8 +81,13 @@ import { useThreadOutboxDrain } from "./state/use-thread-outbox-drain";
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
 type AppScreenOptions = NativeStackNavigationOptions & {
+  readonly unstable_headerToolbarItems?: unknown;
   readonly unstable_navigationItemStyle?: "editor";
 };
+
+function appScreenOptions(options: AppScreenOptions): NativeStackNavigationOptions {
+  return options;
+}
 
 // Shared header presets. Screens only override genuinely dynamic values (titles,
 // subtitles, toolbar items, search callbacks) via NativeStackScreenOptions.
@@ -569,9 +574,14 @@ export const RootStack = createNativeStackNavigator({
     SettingsSheet: createNativeStackScreen({
       screen: SettingsSheetStack,
       linking: "settings",
-      options: {
+      options: appScreenOptions({
         gestureEnabled: true,
         headerShown: false,
+        // Home owns a standard bottom UINavigationController toolbar on
+        // pre-Liquid-Glass iOS. The underlying Home route remains mounted
+        // while this form sheet is presented, so explicitly give the sheet an
+        // empty toolbar instead of inheriting Home's filter controls.
+        unstable_headerToolbarItems: () => [],
         // Android pushes settings as a regular full page with an in-screen
         // back header; iOS keeps the detented form sheet.
         ...(Platform.OS === "android"
@@ -581,7 +591,7 @@ export const RootStack = createNativeStackNavigator({
               sheetAllowedDetents: [0.7, 0.92],
               sheetGrabberVisible: true,
             }),
-      },
+      }),
     }),
     SettingsLegal: createNativeStackScreen({
       screen: SettingsLegalRouteScreen,
