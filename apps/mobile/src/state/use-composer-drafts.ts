@@ -102,6 +102,28 @@ export const composerDraftsAtom = Atom.make<Record<string, ComposerDraft>>({}).p
   Atom.withLabel("mobile:composer-drafts"),
 );
 
+// Thread chrome needs draft-level settings, but subscribing it to the full
+// draft makes every text edit re-render the route and feed container. These
+// selectors retain Object.is equality when only text or attachments change.
+export const composerDraftModelSelectionAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => get(composerDraftsAtom)[draftKey]?.modelSelection).pipe(
+    Atom.withLabel(`mobile:composer-draft-model:${draftKey}`),
+  ),
+);
+export const composerDraftRuntimeModeAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => get(composerDraftsAtom)[draftKey]?.runtimeMode).pipe(
+    Atom.withLabel(`mobile:composer-draft-runtime-mode:${draftKey}`),
+  ),
+);
+export const composerDraftInteractionModeAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => get(composerDraftsAtom)[draftKey]?.interactionMode).pipe(
+    Atom.withLabel(`mobile:composer-draft-interaction-mode:${draftKey}`),
+  ),
+);
+const EMPTY_MODEL_SELECTION_ATOM = Atom.make<ModelSelection | undefined>(undefined);
+const EMPTY_RUNTIME_MODE_ATOM = Atom.make<RuntimeMode | undefined>(undefined);
+const EMPTY_INTERACTION_MODE_ATOM = Atom.make<ProviderInteractionMode | undefined>(undefined);
+
 let loadPromise: Promise<void> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const persistenceQueue = new SerializedAsyncQueue();
@@ -653,5 +675,21 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
   useEffect(() => {
     ensureComposerDraftsLoaded();
   }, []);
-  return draftKey ? normalizeDraft(drafts[draftKey]) : EMPTY_DRAFT;
+  return draftKey ? (drafts[draftKey] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
+}
+
+export function useComposerDraftSettings(draftKey: string | null) {
+  const modelSelection = useAtomValue(
+    draftKey ? composerDraftModelSelectionAtom(draftKey) : EMPTY_MODEL_SELECTION_ATOM,
+  );
+  const runtimeMode = useAtomValue(
+    draftKey ? composerDraftRuntimeModeAtom(draftKey) : EMPTY_RUNTIME_MODE_ATOM,
+  );
+  const interactionMode = useAtomValue(
+    draftKey ? composerDraftInteractionModeAtom(draftKey) : EMPTY_INTERACTION_MODE_ATOM,
+  );
+  useEffect(() => {
+    ensureComposerDraftsLoaded();
+  }, []);
+  return { modelSelection, runtimeMode, interactionMode };
 }

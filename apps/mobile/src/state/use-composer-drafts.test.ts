@@ -63,6 +63,9 @@ import { appAtomRegistry } from "./atom-registry";
 import {
   clearComposerDraftContentState,
   ComposerDraftPersistenceError,
+  composerDraftInteractionModeAtom,
+  composerDraftModelSelectionAtom,
+  composerDraftRuntimeModeAtom,
   composerDraftsAtom,
   copyComposerDraftContentIfEmpty,
   copyComposerDraftContentState,
@@ -86,6 +89,49 @@ afterEach(() => {
 });
 
 describe("mobile composer drafts", () => {
+  it("does not publish settings changes for text-only draft edits", () => {
+    const draftKey = "environment-1:thread-1";
+    const modelSelection = {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-5.4",
+      options: [],
+    };
+    appAtomRegistry.set(composerDraftsAtom, {
+      [draftKey]: {
+        text: "before",
+        attachments: [],
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+      },
+    });
+
+    let settingsNotifications = 0;
+    const onSettingsChange = () => {
+      settingsNotifications += 1;
+    };
+    const subscriptions = [
+      appAtomRegistry.subscribe(composerDraftModelSelectionAtom(draftKey), onSettingsChange, {
+        immediate: true,
+      }),
+      appAtomRegistry.subscribe(composerDraftRuntimeModeAtom(draftKey), onSettingsChange, {
+        immediate: true,
+      }),
+      appAtomRegistry.subscribe(composerDraftInteractionModeAtom(draftKey), onSettingsChange, {
+        immediate: true,
+      }),
+    ];
+    const notificationsBeforeEdit = settingsNotifications;
+
+    setComposerDraftText(draftKey, "after");
+
+    expect(appAtomRegistry.get(composerDraftModelSelectionAtom(draftKey))).toBe(modelSelection);
+    expect(settingsNotifications).toBe(notificationsBeforeEdit);
+    for (const unsubscribe of subscriptions) {
+      unsubscribe();
+    }
+  });
+
   it("hydrates selector state even when the message content is empty", () => {
     expect(
       decodePersistedComposerDrafts({

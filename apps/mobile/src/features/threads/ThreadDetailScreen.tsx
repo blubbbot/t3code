@@ -26,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
 } from "react";
 import { isLiquidGlassSupported, LiquidGlassView } from "@callstack/liquid-glass";
 import {
@@ -55,7 +56,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ControlPill } from "../../components/ControlPill";
 import type { ComposerEditorHandle } from "../../components/ComposerEditor";
 import type { StatusTone } from "../../components/StatusPill";
-import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { CHAT_CONTENT_MAX_WIDTH, type LayoutVariant } from "../../lib/layout";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -65,6 +65,7 @@ import type {
   PendingUserInputDraftAnswer,
   ThreadFeedEntry,
 } from "../../lib/threadActivity";
+import { useThreadDraftForThread } from "../../state/use-thread-composer-state";
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { PendingUserInputCard } from "./PendingUserInputCard";
 import {
@@ -94,8 +95,6 @@ export interface ThreadDetailScreenProps {
   readonly activePendingUserInputDrafts: Record<string, PendingUserInputDraftAnswer>;
   readonly activePendingUserInputAnswers: Record<string, string | ReadonlyArray<string>> | null;
   readonly respondingUserInputId: ApprovalRequestId | null;
-  readonly draftMessage: string;
-  readonly draftAttachments: ReadonlyArray<DraftComposerImageAttachment>;
   readonly connectionStateLabel: EnvironmentConnectionPhase;
   /** Message sync status for the selected thread (drives the composer status pill). */
   readonly threadSyncStatus?: EnvironmentThreadStatus;
@@ -137,6 +136,29 @@ export interface ThreadDetailScreenProps {
   readonly onSubmitUserInput: () => Promise<unknown>;
   readonly showContent?: boolean;
 }
+
+type DraftBoundThreadComposerProps = Omit<
+  ComponentProps<typeof ThreadComposer>,
+  "draftMessage" | "draftAttachments"
+>;
+
+// Keep the high-frequency draft subscription at the composer boundary so a
+// keystroke does not invalidate ThreadRouteContent or ThreadDetailScreen.
+const DraftBoundThreadComposer = memo(function DraftBoundThreadComposer(
+  props: DraftBoundThreadComposerProps,
+) {
+  const draft = useThreadDraftForThread({
+    environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
+  });
+  return (
+    <ThreadComposer
+      {...props}
+      draftMessage={draft.draftMessage}
+      draftAttachments={draft.draftAttachments}
+    />
+  );
+});
 
 function latestStreamingAssistantMessage(
   feed: ReadonlyArray<ThreadFeedEntry>,
@@ -713,10 +735,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
             {/* Hidden (not unmounted) while a user-input request owns the
                 composer slot, so composer drafts and editor state survive. */}
             <View style={activeUserInputRequestId !== null ? { display: "none" } : undefined}>
-              <ThreadComposer
+              <DraftBoundThreadComposer
                 editorRef={composerEditorRef}
-                draftMessage={props.draftMessage}
-                draftAttachments={props.draftAttachments}
                 placeholder="Ask the repo agent, or run a command…"
                 contentMaxWidth={contentMaxWidth}
                 connectionState={props.connectionStateLabel}

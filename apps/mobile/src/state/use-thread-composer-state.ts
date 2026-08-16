@@ -1,4 +1,3 @@
-import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo } from "react";
 
 import {
@@ -35,6 +34,7 @@ import {
   setComposerDraftText,
   updateComposerDraftSettings,
   useComposerDraft,
+  useComposerDraftSettings,
 } from "./use-composer-drafts";
 import { setPendingConnectionError } from "../state/use-remote-environment-registry";
 import { useSelectedThreadDetail } from "../state/use-thread-detail";
@@ -76,7 +76,6 @@ export function useThreadDraftForThread(input: {
 export function useThreadComposerState() {
   const { selectedThread: selectedThreadShell } = useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
-  const composerDrafts = useAtomValue(composerDraftsAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
 
   useEffect(() => {
@@ -95,14 +94,14 @@ export function useThreadComposerState() {
     [selectedThreadDetail],
   );
 
-  const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
-  const draftMessage = selectedDraft?.text ?? "";
-  const draftAttachments = selectedDraft?.attachments ?? [];
+  const selectedDraftSettings = useComposerDraftSettings(selectedThreadKey);
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadDetail ?? selectedThreadShell;
-  const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
-  const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
-  const interactionMode = selectedDraft?.interactionMode ?? selectedThread?.interactionMode ?? null;
+  const modelSelection =
+    selectedDraftSettings.modelSelection ?? selectedThread?.modelSelection ?? null;
+  const runtimeMode = selectedDraftSettings.runtimeMode ?? selectedThread?.runtimeMode ?? null;
+  const interactionMode =
+    selectedDraftSettings.interactionMode ?? selectedThread?.interactionMode ?? null;
 
   const selectedThreadSessionActivity = useMemo(() => {
     const selectedThread = selectedThreadDetail ?? selectedThreadShell;
@@ -196,7 +195,7 @@ export function useThreadComposerState() {
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
     const result = await pickComposerImages({
-      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      existingCount: getComposerDraftSnapshot(threadKey).attachments.length,
     });
     if (result.images.length > 0) {
       appendComposerDraftAttachments(threadKey, result.images);
@@ -204,7 +203,7 @@ export function useThreadComposerState() {
     if (result.error) {
       setPendingConnectionError(result.error);
     }
-  }, [composerDrafts, selectedThreadShell]);
+  }, [selectedThreadShell]);
 
   const onPasteIntoDraft = useCallback(async () => {
     if (!selectedThreadShell) {
@@ -213,7 +212,7 @@ export function useThreadComposerState() {
 
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
     const result = await pasteComposerClipboard({
-      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      existingCount: getComposerDraftSnapshot(threadKey).attachments.length,
     });
     if (result.images.length > 0) {
       appendComposerDraftAttachments(threadKey, result.images);
@@ -224,7 +223,7 @@ export function useThreadComposerState() {
     if (result.error) {
       setPendingConnectionError(result.error);
     }
-  }, [composerDrafts, selectedThreadShell]);
+  }, [selectedThreadShell]);
 
   const onNativePasteImages = useCallback(
     async (uris: ReadonlyArray<string>) => {
@@ -236,7 +235,7 @@ export function useThreadComposerState() {
       try {
         const images = await convertPastedImagesToAttachments({
           uris,
-          existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+          existingCount: getComposerDraftSnapshot(threadKey).attachments.length,
         });
         if (images.length > 0) {
           appendComposerDraftAttachments(threadKey, images);
@@ -250,7 +249,7 @@ export function useThreadComposerState() {
         });
       }
     },
-    [composerDrafts, selectedThreadShell],
+    [selectedThreadShell],
   );
 
   const onRemoveDraftImage = useCallback(
@@ -299,8 +298,6 @@ export function useThreadComposerState() {
     selectedThreadFeed,
     selectedThreadQueueCount,
     activeWorkStartedAt,
-    draftMessage,
-    draftAttachments,
     modelSelection,
     runtimeMode,
     interactionMode,
