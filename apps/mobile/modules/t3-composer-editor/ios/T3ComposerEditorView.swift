@@ -399,7 +399,18 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     if document.isNativeEcho && textView.serializedText() != document.value {
       return
     }
-    if tokensJson != document.tokensJson {
+    let tokensChanged = tokensJson != document.tokensJson
+    if document.isNativeEcho && !documentChanged && !tokensChanged && !tokensNeedRebuild
+      && document.selection == nil
+    {
+      // UIKit already owns this text and caret. Most keystrokes return through
+      // React as an unchanged controlled echo, so avoid serializing the full
+      // attributed document a second time in applyControlledDocument.
+      value = document.value
+      requestedSelection = nil
+      return
+    }
+    if tokensChanged {
       tokensJson = document.tokensJson
       tokens = decode([ComposerTokenPayload].self, from: document.tokensJson) ?? []
       tokensNeedRebuild = true
