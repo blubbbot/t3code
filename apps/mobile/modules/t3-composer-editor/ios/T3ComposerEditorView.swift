@@ -84,14 +84,8 @@ private final class ComposerTextView: UITextView {
   }
 
   override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-    if action == #selector(paste(_:)) {
-      let pasteboard = UIPasteboard.general
-      if pasteboard.hasImages ||
-        pasteboard.itemProviders.contains(where: {
-          $0.canLoadObject(ofClass: UIImage.self)
-        }) {
-        return true
-      }
+    if action == #selector(paste(_:)), UIPasteboard.general.hasImages {
+      return true
     }
     return super.canPerformAction(action, withSender: sender)
   }
