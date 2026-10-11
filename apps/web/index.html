@@ -478,6 +478,13 @@
       }
     </style>
     <title>T3 Code (Alpha)</title>
+    <script>
+      (() => {
+        // Use preload branding before React loads; browsers keep the static title.
+        const branding = window.desktopBridge?.getAppBranding?.();
+        if (branding?.displayName) document.title = branding.displayName;
+      })();
+    </script>
   </head>
   <body>
     <div id="root">
