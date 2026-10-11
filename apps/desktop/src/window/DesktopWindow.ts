@@ -695,9 +695,13 @@ export const make = Effect.gen(function* () {
       if (input.type === "gestureScrollEnd") window.webContents.send(TRACKPAD_SCROLL_END_CHANNEL);
     });
 
-    window.on("page-title-updated", (event) => {
+    window.on("page-title-updated", (event, title) => {
       event.preventDefault();
-      window.setTitle(environment.displayName);
+      window.setTitle(
+        environment.platform === "darwin"
+          ? title.trim() || environment.displayName
+          : environment.displayName,
+      );
     });
     window.on("resize", scheduleBoundsPersist);
     window.on("move", scheduleBoundsPersist);
@@ -772,7 +776,8 @@ export const make = Effect.gen(function* () {
       }
       clearDevelopmentLoadRetry();
       developmentLoadRetryIndex = 0;
-      window.setTitle(environment.displayName);
+      // On macOS the renderer owns the title; resetting it here can race its first update.
+      if (environment.platform !== "darwin") window.setTitle(environment.displayName);
       if (environment.platform === "darwin") syncMacosWindowButtons(window);
     });
     window.webContents.on(

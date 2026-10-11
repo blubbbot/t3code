@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  formatThreadWindowTitle,
   resolveServerBackedAppDisplayName,
   resolveServerBackedAppStageLabel,
 } from "./branding.logic";
@@ -15,6 +16,61 @@ afterEach(() => {
   }
 
   globalThis.window = originalWindow;
+});
+
+describe("thread window titles", () => {
+  it("keeps thread and project context alongside the app's release channel", () => {
+    expect(
+      formatThreadWindowTitle({
+        appDisplayName: "T3 Code (Nightly)",
+        threadTitle: "Fix login bug",
+        projectTitle: "Website",
+      }),
+    ).toBe("Fix login bug — Website — T3 Code (Nightly)");
+  });
+
+  it("shows a draft's project before its first message", () => {
+    expect(
+      formatThreadWindowTitle({
+        appDisplayName: "T3 Code (Dev)",
+        threadTitle: "New thread",
+        projectTitle: "Website",
+      }),
+    ).toBe("New thread — Website — T3 Code (Dev)");
+  });
+
+  it("keeps a thread's title while its project is unavailable", () => {
+    expect(
+      formatThreadWindowTitle({
+        appDisplayName: "T3 Code",
+        threadTitle: "Fix login bug",
+        projectTitle: null,
+      }),
+    ).toBe("Fix login bug — T3 Code");
+  });
+
+  it("trims context and omits an empty project name", () => {
+    expect(
+      formatThreadWindowTitle({
+        appDisplayName: "T3 Code",
+        threadTitle: " Fix login bug ",
+        projectTitle: " \n ",
+      }),
+    ).toBe("Fix login bug — T3 Code");
+  });
+
+  it.each([null, undefined, "", " \n "])(
+    "falls back to app branding without a selected thread (%s)",
+    (threadTitle) => {
+      expect(
+        formatThreadWindowTitle({
+          appDisplayName: "T3 Code (Alpha)",
+          threadTitle,
+          projectTitle: "Website",
+        }),
+      ).toBe("T3 Code (Alpha)");
+    },
+  );
 });
 
 describe("branding", () => {

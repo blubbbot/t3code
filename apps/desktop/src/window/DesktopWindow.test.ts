@@ -74,6 +74,7 @@ function makeFakeBrowserWindow() {
   const windowListeners = new Map<string, (...args: readonly unknown[]) => void>();
   const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
   let zoomLevel = 0;
+  let windowTitle = "";
   const webContents = {
     copyImageAt: vi.fn(),
     focus: vi.fn(),
@@ -104,6 +105,7 @@ function makeFakeBrowserWindow() {
     focus: vi.fn(),
     getBounds: vi.fn(() => ({ x: 0, y: 0, width: 1100, height: 780 })),
     getNormalBounds: vi.fn(() => ({ x: 0, y: 0, width: 1100, height: 780 })),
+    getTitle: () => windowTitle,
     isDestroyed: vi.fn(() => false),
     isFullScreen: vi.fn(() => false),
     isMaximized: vi.fn(() => false),
@@ -122,7 +124,9 @@ function makeFakeBrowserWindow() {
     setAutoHideCursor: vi.fn(),
     setFullScreen: vi.fn(),
     setOpacity: vi.fn(),
-    setTitle: vi.fn(),
+    setTitle: vi.fn((title: string) => {
+      windowTitle = title;
+    }),
     setTitleBarOverlay: vi.fn(),
     setWindowButtonPosition: vi.fn(),
     show: vi.fn(),
@@ -200,23 +204,27 @@ const layerElectronTheme = Layer.succeed(ElectronTheme.ElectronTheme, {
   onUpdated: () => Effect.void,
 } satisfies ElectronTheme.ElectronTheme["Service"]);
 
-const layerDesktopEnvironment = DesktopEnvironment.layer(environmentInput).pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      NodeServices.layer,
-      DesktopConfig.layerTest({
-        T3CODE_PORT: "3773",
-        VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
-      }),
+const layerDesktopEnvironmentFor = (platform: NodeJS.Platform = environmentInput.platform) =>
+  DesktopEnvironment.layer({ ...environmentInput, platform }).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        NodeServices.layer,
+        DesktopConfig.layerTest({
+          T3CODE_PORT: "3773",
+          VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
+        }),
+      ),
     ),
-  ),
-);
+  );
+
+const layerDesktopEnvironment = layerDesktopEnvironmentFor();
 
 const desktopWindowBoundsEquivalence = Schema.toEquivalence(
   DesktopAppSettings.DesktopWindowBoundsSchema,
 );
 
 function layerTest(input: {
+  readonly platform?: NodeJS.Platform;
   readonly window: Electron.BrowserWindow;
   readonly createCount: Ref.Ref<number>;
   readonly mainWindow: Ref.Ref<Option.Option<Electron.BrowserWindow>>;
@@ -301,7 +309,7 @@ function layerTest(input: {
           recordMetrics: () => Effect.void,
           shutdown: Effect.void,
         }),
-        layerDesktopEnvironment,
+        layerDesktopEnvironmentFor(input.platform),
         layerDesktopAppSettings,
         layerDesktopClientSettings,
         layerDesktopServerExposure,
@@ -461,6 +469,74 @@ const captureOne = DesktopSnapShotId.make("11111111-1111-4111-8111-111111111111"
 const captureTwo = DesktopSnapShotId.make("22222222-2222-4222-8222-222222222222");
 
 describe("DesktopWindow", () => {
+  it.effect("preserves macOS thread titles across load, rename, and navigation", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = layerTest({ window: fakeWindow.window, createCount, mainWindow });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        const appDisplayName = "T3 Code (Dev)";
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const pageTitleUpdated = fakeWindow.windowListeners.get("page-title-updated");
+        const didFinishLoad = fakeWindow.webContentsListeners.get("did-finish-load");
+        if (!pageTitleUpdated || !didFinishLoad) {
+          return yield* Effect.die("renderer title or load listener was not registered");
+        }
+        const event = { preventDefault: vi.fn() };
+        const title = `Fix login bug — Website — ${appDisplayName}`;
+        pageTitleUpdated(event, title, true);
+        didFinishLoad();
+        assert.equal(fakeWindow.window.getTitle(), title);
+
+        const renamedTitle = `Fix logout bug — Website — ${appDisplayName}`;
+        pageTitleUpdated(event, renamedTitle, true);
+        assert.equal(fakeWindow.window.getTitle(), renamedTitle);
+
+        pageTitleUpdated(event, appDisplayName, true);
+        assert.equal(fakeWindow.window.getTitle(), appDisplayName);
+
+        pageTitleUpdated(event, "  ", true);
+        assert.equal(fakeWindow.window.getTitle(), appDisplayName);
+
+        didFinishLoad();
+        pageTitleUpdated(event, title, true);
+        assert.equal(fakeWindow.window.getTitle(), title);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect.each(["linux", "win32"] as const)("keeps the fixed app title on %s", (platform) =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = layerTest({ platform, window: fakeWindow.window, createCount, mainWindow });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        const appDisplayName = "T3 Code (Dev)";
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const pageTitleUpdated = fakeWindow.windowListeners.get("page-title-updated");
+        const didFinishLoad = fakeWindow.webContentsListeners.get("did-finish-load");
+        if (!pageTitleUpdated || !didFinishLoad) {
+          return yield* Effect.die("renderer title or load listener was not registered");
+        }
+
+        pageTitleUpdated({ preventDefault: vi.fn() }, "Fix login bug — Website", true);
+        assert.equal(fakeWindow.window.getTitle(), appDisplayName);
+
+        fakeWindow.window.setTitle("A renderer title before load completes");
+        didFinishLoad();
+        assert.equal(fakeWindow.window.getTitle(), appDisplayName);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect("shows native context menus for browser guests and sign-in popups", () =>
     Effect.gen(function* () {
       const host = makeFakeBrowserWindow();

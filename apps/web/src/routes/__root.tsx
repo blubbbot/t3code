@@ -9,13 +9,16 @@ import {
   type ErrorComponentProps,
   useLocation,
   useNavigate,
+  useParams,
   useRouter,
 } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
-import { resolveServerBackedAppDisplayName } from "../branding.logic";
+import { formatThreadWindowTitle, resolveServerBackedAppDisplayName } from "../branding.logic";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { resolveActiveThreadRouteRef, resolveThreadRouteTarget } from "../threadRoutes";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
@@ -53,7 +56,7 @@ import {
   toastManager,
 } from "../components/ui/toast";
 import { isElectron } from "../env";
-import { cn } from "../lib/utils";
+import { cn, isMacPlatform } from "../lib/utils";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
 import { applyAppearanceContrast } from "~/appearanceContrast";
 import { useClientSettings } from "../hooks/useSettings";
@@ -75,7 +78,13 @@ import {
   primaryServerConfigEventAtom,
   primaryServerWelcomeAtom,
 } from "../state/server";
-import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
+import {
+  readProject,
+  setActiveEnvironmentId,
+  useActiveEnvironmentId,
+  useProject,
+  useThreadShell,
+} from "../state/entities";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -342,16 +351,58 @@ function FontAppearanceSync() {
 function DocumentTitleSync() {
   const primaryServerVersion =
     useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
-  const title = resolveServerBackedAppDisplayName({
+  const appDisplayName = resolveServerBackedAppDisplayName({
     baseName: APP_BASE_NAME,
     fallbackDisplayName: APP_DISPLAY_NAME,
     fallbackStageLabel: APP_STAGE_LABEL,
     primaryServerVersion,
   });
+  const { authGateState } = Route.useRouteContext();
+  const showThreadContext =
+    isElectron &&
+    isMacPlatform(navigator.platform) &&
+    (authGateState.status === "authenticated" || authGateState.status === "hosted-static");
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => (showThreadContext ? resolveThreadRouteTarget(params) : null),
+  });
+  const draftSession = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft"
+      ? store.getDraftSession(routeTarget.draftId)
+      : routeTarget?.kind === "server"
+        ? store.getDraftSessionByRef(routeTarget.threadRef)
+        : null,
+  );
+  const threadRef = useMemo(
+    () => resolveActiveThreadRouteRef(routeTarget, draftSession),
+    [draftSession, routeTarget],
+  );
+  const thread = useThreadShell(threadRef);
+  const projectEnvironmentId = thread?.environmentId ?? draftSession?.environmentId;
+  const projectId = thread?.projectId ?? draftSession?.projectId;
+  const projectRef = useMemo(
+    () =>
+      projectEnvironmentId && projectId ? scopeProjectRef(projectEnvironmentId, projectId) : null,
+    [projectEnvironmentId, projectId],
+  );
+  const project = useProject(projectRef);
+  const title = formatThreadWindowTitle({
+    appDisplayName,
+    threadTitle: thread?.title ?? (draftSession ? "New thread" : null),
+    projectTitle: project?.title,
+  });
 
   useEffect(() => {
     document.title = title;
   }, [title]);
+
+  useEffect(
+    () => () => {
+      // The root error view replaces this component without selecting another route.
+      document.title = appDisplayName;
+    },
+    [appDisplayName],
+  );
 
   return null;
 }
