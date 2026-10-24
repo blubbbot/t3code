@@ -455,6 +455,60 @@ const captureOne = DesktopSnapShotId.make("11111111-1111-4111-8111-111111111111"
 const captureTwo = DesktopSnapShotId.make("22222222-2222-4222-8222-222222222222");
 
 describe("DesktopWindow", () => {
+  it.effect("keeps the renderer's thread title through a completed load", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount: yield* Ref.make(0),
+        mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        const titleUpdated = fakeWindow.windowListeners.get("page-title-updated");
+        const didFinishLoad = fakeWindow.webContentsListeners.get("did-finish-load");
+        if (!titleUpdated || !didFinishLoad) {
+          return yield* Effect.die("window title listeners were not registered");
+        }
+        const preventDefault = vi.fn();
+        vi.mocked(fakeWindow.window.setTitle).mockClear();
+
+        titleUpdated({ preventDefault }, "project / Fix login bug");
+        didFinishLoad();
+
+        assert.equal(preventDefault.mock.calls.length, 0);
+        assert.equal(vi.mocked(fakeWindow.window.setTitle).mock.calls.length, 0);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("uses the app name instead of a blank renderer title", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount: yield* Ref.make(0),
+        mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        const titleUpdated = fakeWindow.windowListeners.get("page-title-updated");
+        if (!titleUpdated) return yield* Effect.die("window title listener was not registered");
+        const preventDefault = vi.fn();
+        vi.mocked(fakeWindow.window.setTitle).mockClear();
+
+        titleUpdated({ preventDefault }, "  ");
+
+        assert.equal(preventDefault.mock.calls.length, 1);
+        assert.deepEqual(vi.mocked(fakeWindow.window.setTitle).mock.calls, [["T3 Code (Dev)"]]);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it("restores bounds only when the window fits within a connected display", () => {
     const persistedBounds = { x: 2040, y: 80, width: 1320, height: 880 };
     const displays = [
