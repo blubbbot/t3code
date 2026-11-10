@@ -6,7 +6,8 @@ import type { DraftSessionState } from "./composerDraftStore";
 
 const state = await vi.hoisted(async () => {
   const { Atom, AtomRegistry } = await import("effect/reactivity");
-  const projects = Atom.make<Record<string, { title: string }>>({}).pipe(Atom.keepAlive);
+  const projectData = Atom.make<Record<string, { title: string }>>({}).pipe(Atom.keepAlive);
+  const projects = Atom.make((get) => get(projectData));
   const threads = Atom.family((key: string) =>
     Atom.make<{
       environmentId: string;
@@ -16,8 +17,9 @@ const state = await vi.hoisted(async () => {
   );
   return {
     registry: AtomRegistry.make(),
+    projectData,
     projects,
-    project: Atom.family((key: string) => Atom.make((get) => get(projects)[key] ?? null)),
+    project: Atom.family((key: string) => Atom.make((get) => get(projectData)[key] ?? null)),
     threads,
     config: Atom.make(null),
     drafts: new Map<
@@ -90,7 +92,7 @@ function setup() {
     ref: { environmentId: EnvironmentId; projectId: ProjectId },
     title: string,
   ) => {
-    state.registry.update(state.projects, (projects) => ({
+    state.registry.update(state.projectData, (projects) => ({
       ...projects,
       [scopedProjectKey(ref)]: { title },
     }));

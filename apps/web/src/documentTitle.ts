@@ -31,9 +31,15 @@ export function startDocumentTitle(router: AppRouter): void {
   const readOnGuestPage = () => router.state.matches.some((match) => match.routeId === "/guest");
   let { threadRef: openThreadRef, draftProjectRef } = readOpenContext(router);
   let onGuestPage = readOnGuestPage();
+  let watchedProjectKey: string | null = null;
+  let unsubscribeProject = () => {};
   const write = () => {
     // GuestPage titles the tab after the shared thread.
-    if (onGuestPage) return;
+    if (onGuestPage) {
+      unsubscribeProject();
+      watchedProjectKey = null;
+      return;
+    }
     const thread =
       openThreadRef === null
         ? null
@@ -41,6 +47,14 @@ export function startDocumentTitle(router: AppRouter): void {
     const projectRef = thread
       ? scopeProjectRef(thread.environmentId, thread.projectId)
       : draftProjectRef;
+    const projectKey = projectRef ? scopedProjectKey(projectRef) : null;
+    if (projectKey !== watchedProjectKey) {
+      unsubscribeProject();
+      watchedProjectKey = projectKey;
+      unsubscribeProject = projectRef
+        ? appAtomRegistry.subscribe(environmentProjects.projectAtom(projectRef), write)
+        : () => {};
+    }
     const project = projectRef
       ? appAtomRegistry.get(environmentProjects.projectAtom(projectRef))
       : null;
@@ -56,7 +70,6 @@ export function startDocumentTitle(router: AppRouter): void {
       threadTitle: thread?.title ?? null,
       desktop: isElectron,
     });
-    // Projects change whenever any project does; most changes leave the title alone.
     if (document.title !== title) document.title = title;
   };
   // The open thread's own shell, since the shell lists skip threads hidden by a tag filter.
@@ -91,7 +104,6 @@ export function startDocumentTitle(router: AppRouter): void {
   };
   watchOpenThread();
   appAtomRegistry.subscribe(primaryServerConfigAtom, write, { immediate: true });
-  appAtomRegistry.subscribe(environmentProjects.projectsAtom, write);
   router.subscribe("onResolved", updateOpenThread);
   useComposerDraftStore.subscribe(updateOpenThread);
 }
