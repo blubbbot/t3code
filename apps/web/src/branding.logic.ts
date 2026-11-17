@@ -65,12 +65,14 @@ export function resolveWindowTitle(input: {
   readonly desktop: boolean;
 }): string {
   const threadTitle = input.threadTitle?.trim() ?? "";
+  const projectTitle = input.projectTitle?.trim() ?? "";
   const status = input.screenReader?.threadStatus;
   if (threadTitle === "") {
-    return status ? `${status}: ${input.appDisplayName}` : input.appDisplayName;
+    const context = projectTitle || input.appDisplayName;
+    const title = status ? `${status}: ${context}` : context;
+    return projectTitle && !input.desktop ? `${title} - ${input.appDisplayName}` : title;
   }
 
-  const projectTitle = input.projectTitle?.trim() ?? "";
   const context =
     projectTitle === ""
       ? threadTitle
